@@ -17,9 +17,9 @@ more info ./client.py -h
 ```bash
 PROJECT_DIR=/your server.py/file/path
 HOME=${~}
-cat > /etc/systemd/system/cc-server.service<<EOF
+cat > /etc/systemd/system/scc-server.service<<EOF
 [Unit]
-Description=ops daemon
+Description=scc server daemon
 
 [Service]
 StandardError=syslog
@@ -36,9 +36,9 @@ EOF
 PROJECT_DIR=/your client.py/file/path
 SERVER_IP=YOUR.IP.ADDRESS.
 
-cat > /etc/systemd/system/cc-client.service<<EOF
+cat > /etc/systemd/system/scc-client.service<<EOF
 [Unit]
-Description=ops daemon
+Description=scc client daemon
 
 [Service]
 ExecStart=/usr/bin/python3 ${PROJECT_DIR}/client.py --server ${SERVER_IP} 
