@@ -22,8 +22,8 @@ cat > /etc/systemd/system/scc-server.service<<EOF
 Description=scc server daemon
 
 [Service]
-StandardError=syslog
-ExecStart=/usr/bin/python3 ${PROJECT_DIR}/server.py --date-dir ${HOME} 
+StandardOutput=syslog
+ExecStart=/usr/bin/python3 ${PROJECT_DIR}/server.py --data-dir ${HOME} 
 KillSignal=SIGQUIT
 Restart=always
 
@@ -42,7 +42,7 @@ Description=scc client daemon
 
 [Service]
 ExecStart=/usr/bin/python3 ${PROJECT_DIR}/client.py --server ${SERVER_IP} 
-KillSignal=SIGQUIT
+StandardOutput=SIGQUIT
 Restart=always
 
 [Install]
