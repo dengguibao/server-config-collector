@@ -27,7 +27,7 @@ class Server:
         data_dir_state_code = self.verify_directory(DATA_DIR)
         if '0x00' != data_dir_state_code:
             sys.stdout.write('%s, [error], reason:%s\r\n' % (
-                time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
+                time.strftime('%F %T', time.localtime()),
                 self.ERR[data_dir_state_code]
             ))
             return
@@ -42,38 +42,39 @@ class Server:
             client_socket, client_addr = self.tcp_server.accept()
             # client connected
             sys.stdout.write(
-                '%s, [info], info:client connected to port %s from %s:%s\r\n' % (
-                    time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
+                '%s, [info], msg:client connected to port %s from %s:%s\r\n' % (
+                    time.strftime('%F %T', time.localtime()),
                     PORT,
                     client_addr[0],
                     client_addr[1]
                 )
             )
-            # metadata str
-            recv_metadata_str = client_socket.recv(1024)
             try:
+                # metadata str
+                recv_metadata_str = client_socket.recv(1024)
                 file_metadata = json.loads(recv_metadata_str.decode())
                 file_metadata['ip'] = client_addr[0]
                 full_path_filename = self.valid_file(file_metadata)
             except:
                 sys.stdout.write(
-                    '%s, [error], info:%s illegal request\r\n' % (
-                        time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
+                    '%s, [error], msg:%s illegal request\r\n' % (
+                        time.strftime('%F %T', time.localtime()),
                         client_addr[0]
                     )
                 )
 
-            # valid success
+            # valid file meta data success, got backup file full path
             if file_metadata:
                 if full_path_filename:
-                    # send 'ok' to client, tell client start post file content to server
+                    # send 'ok' to client, tell client start send file content data to this server
                     client_socket.send('ok'.encode())
-                    fp = open(full_path_filename, 'ab+')
-                    d = b''
+                    fp = open('/tmp/scc_tmp.dat', 'ab+')
+                    # loop read client send data
                     while True:
                         try:
                             d = client_socket.recv(1024)
                         except:
+                            break
                             fp.close()
 
                         if d:
@@ -81,40 +82,54 @@ class Server:
                         else:
                             fp.close()
                             break
-                    noti_msg = '%s, [info], info:%s %s config file backup success\r\n' % (
-                        time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
-                        client_addr[0],
-                        file_metadata['full_path_filename']
-                    )
+                    if fp:
+                        fp.close()
+                    # valid receive data md5 value
+                    # if pass then remove to destination directory
+                    if self.get_file_md5('/tmp/scc_tmp.dat') == file_metadata['hash']:
+                        os.rename('/tmp/scc_tmp.dat', full_path_filename)
+                        noti_msg = '%s, [info], msg:%s %s config file backup success\r\n' % (
+                            time.strftime('%F %T', time.localtime()),
+                            client_addr[0],
+                            file_metadata['full_path_filename']
+                        )
+                    # valid receive data failed, delete tmp file
+                    else:
+                        noti_msg = '%s, [warning], msg:%s %s receive data hash verify failed!\r\n' % (
+                            time.strftime('%F %T', time.localtime()),
+                            client_addr[0],
+                            file_metadata['full_path_filename']
+                        )
+                        os.remove('/tmp/scc_tmp.dat')
                     sys.stdout.write(noti_msg)
+                # local already exist this config file copy, tell client don't send data
                 else:
                     client_socket.send('no'.encode())
-                    noti_msg = '%s, [info], info:config file[%s %s] is already exist on the local\r\n' % (
-                        time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
+                    noti_msg = '%s, [info], from:%s, file:%s, msg:file is already exist on the local\r\n' % (
+                        time.strftime('%F %T', time.localtime()),
                         client_addr[0],
                         file_metadata['full_path_filename']
                     )
                     sys.stdout.write(noti_msg)
-
-            client_socket.shutdown(2)
+            # client_socket.shutdown(2)
             client_socket.close()
 
     def valid_file(self, data):
         ip_path = data['ip'].replace('.', '-')
-        date_path = data['date'].split(' ')[0]
-        date_ext = data['date'].split(' ')[1].replace(':', '_')
+        date_ext = data['date'].replace(':', '_').replace(' ', '_').replace('-', '_')
         dest_hash = data['hash']
         filename = data['filename']
+        filename_dir = filename.split('.')[0]
 
-        file_path = os.path.join(DATA_DIR, ip_path, date_path)
+        file_path = os.path.join(DATA_DIR, ip_path, filename_dir)
         full_path_filename = os.path.join(file_path, filename)
 
         file_path_state_code = self.verify_directory(file_path)
         if '0x00' != file_path_state_code:
             os.makedirs(file_path)
             sys.stdout.write(
-                '%s, [info], info:create directory %s\r\n' % (
-                    time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
+                '%s, [info], msg:create directory %s\r\n' % (
+                    time.strftime('%F %T', time.localtime()),
                     file_path
                 )
             )
@@ -128,8 +143,6 @@ class Server:
             os.rename(full_path_filename, full_path_filename + '.' + date_ext)
 
         return full_path_filename
-
-
 
     @staticmethod
     def verify_directory(file_path):
@@ -145,11 +158,15 @@ class Server:
     @staticmethod
     def get_file_md5(filename):
         if not os.path.exists(filename) or not os.path.isfile(filename) or os.path.getsize(filename) == 0:
-            return ''
+            return False
+        m = hashlib.md5()
         with open(filename, 'rb') as fp:
-            data = fp.read()
-
-        file_hash_str = hashlib.md5(data).hexdigest()
+            while True:
+                data = fp.read(4096)
+                if not data:
+                    break
+                m.update(data)
+        file_hash_str = m.hexdigest()
         return file_hash_str
 
 
