@@ -119,7 +119,8 @@ class Server:
         date_ext = data['date'].replace(':', '_').replace(' ', '_').replace('-', '_')
         dest_hash = data['hash']
         filename = data['filename']
-        filename_dir = filename.split('.')[0]
+        x = filename.split('.')
+        filename_dir = x[0] if len(x) == 1 else '.'.join(x[0:-1])
 
         file_path = os.path.join(DATA_DIR, ip_path, filename_dir)
         full_path_filename = os.path.join(file_path, filename)
