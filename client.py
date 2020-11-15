@@ -80,41 +80,67 @@ class Client:
                     self.ERR[state_code]
                 ))
                 continue
+
             file_path_uuid = ''.join(
                 str(uuid.uuid5(uuid.NAMESPACE_DNS, f)).split('-')
             )
             file_hash = self.get_file_md5(f)
-            date_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
-            file_content = self.get_file_content(f)
-            if not file_content:
-                continue
-            # print(file_path_uuid, file_hash)
+
             if file_path_uuid not in hash_array or hash_array[file_path_uuid] != file_hash:
                 hash_array[file_path_uuid] = file_hash
-                data = {
-                    'full_path_filename': f,
-                    'hash': file_hash,
-                    'date': date_time,
-                    'content': file_content,
-                    'filename': os.path.split(f)[1]
-                }
+                # send file metadata info
+                metadata_info = self.build_file_metadata_info(f)
                 self.tcp_socket.connect((SERVER, PORT))
-                self.tcp_socket.sendall(json.dumps(data, ensure_ascii=False).encode())
-                sys.stdout.write('%s, [info], filename:%s, info:push to server\r\n' % (
-                    time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
-                    f
-                ))
-            else:
+                self.tcp_socket.sendall(json.dumps(metadata_info, ensure_ascii=False).encode())
+                max_wait_time = 0
 
+                # if receive success then send data to server
+                while True:
+                    server_response = self.tcp_socket.recv(1024)
+                    if server_response or max_wait_time > 1:
+                        break
+                    time.sleep(.1)
+                    max_wait_time += .1
+
+                if server_response.decode() == 'ok':
+                    file_data = self.get_file_content(f)
+                    for i in file_data:
+                        self.tcp_socket.send(i)
+
+                    sys.stdout.write('%s, [info], filename:%s, info:push to server\r\n' % (
+                        time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
+                        f
+                    ))
+            else:
                 continue
 
     @staticmethod
     def get_file_content(filename):
-        if os.path.exists(filename) and os.path.isfile(filename):
-            with open(filename, 'r') as fp:
-                data = fp.read()
-            return data
-        return False
+        data = []
+        n = 1
+        with open(filename, 'rb') as fp:
+            while True:
+                content = fp.read(1024)
+                if content:
+                    data.append(content)
+                    fp.seek(1024*n+1)
+                    n += 1
+                else:
+                    break
+        return data
+
+    def build_file_metadata_info(self, filename):
+        file_hash = self.get_file_md5(filename)
+        date_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+        # file_content = self.get_file_content(filename)
+        data = {
+            'full_path_filename': filename,
+            'hash': file_hash,
+            'date': date_time,
+            # 'content': file_content,
+            'filename': os.path.split(filename)[1]
+        }
+        return data
 
     @staticmethod
     def verify_file(filename):
@@ -165,9 +191,13 @@ if __name__ == '__main__':
     MAX_SIZE = args.max_size * 1024 * 1024
 
     while True:
+        # client = Client()
+        # client.run()
+        # time.sleep(DELAY)
         try:
             client = Client()
             client.run()
             time.sleep(DELAY)
-        except:
+        except Exception as e:
+            print(e)
             break

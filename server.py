@@ -49,58 +49,63 @@ class Server:
                     client_addr[1]
                 )
             )
-
-            total_data = []
-            while True:
-                try:
-                    d = client_socket.recv(1024)
-                    if not d:
-                        break
-                except Exception:
-                    sys.stdout.write(
-                        '%s, [error], reason:receive data failed\r\n' % (
-                            time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
-                        )
+            # metadata str
+            recv_metadata_str = client_socket.recv(1024)
+            try:
+                file_metadata = json.loads(recv_metadata_str.decode())
+                file_metadata['ip'] = client_addr[0]
+                full_path_filename = self.valid_file(file_metadata)
+            except:
+                sys.stdout.write(
+                    '%s, [error], info:%s illegal request\r\n' % (
+                        time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
+                        client_addr[0]
                     )
+                )
 
-                total_data.append(d)
+            # valid success
+            if file_metadata:
+                if full_path_filename:
+                    # send 'ok' to client, tell client start post file content to server
+                    client_socket.send('ok'.encode())
+                    fp = open(full_path_filename, 'ab+')
+                    d = b''
+                    while True:
+                        try:
+                            d = client_socket.recv(1024)
+                        except:
+                            fp.close()
 
-            receive_data = b''.join(total_data).decode()
-            del total_data
+                        if d:
+                            fp.write(d)
+                        else:
+                            fp.close()
+                            break
+                    noti_msg = '%s, [info], info:%s %s config file backup success\r\n' % (
+                        time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
+                        client_addr[0],
+                        file_metadata['full_path_filename']
+                    )
+                    sys.stdout.write(noti_msg)
+                else:
+                    client_socket.send('no'.encode())
+                    noti_msg = '%s, [info], info:config file[%s %s] is already exist on the local\r\n' % (
+                        time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
+                        client_addr[0],
+                        file_metadata['full_path_filename']
+                    )
+                    sys.stdout.write(noti_msg)
 
-            if not receive_data:
-                pass
-            else:
-                try:
-                    data = json.loads(receive_data)
-                    data['ip'] = str(client_addr[0])
-                    if self.write_to_file(data):
-                        noti_msg = '%s, [info], info:%s %s config file backup success\r\n' % (
-                            time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
-                            client_addr[0],
-                            data['full_path_filename']
-                        )
-                        sys.stdout.write(noti_msg)
-                    else:
-                        noti_msg = '%s, [info], info:receive config file[server:%s file:%s] ,but the file is already exist on the local\r\n' % (
-                            time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
-                            client_addr[0],
-                            data['full_path_filename']
-                        )
-                        sys.stdout.write(noti_msg)
-                except:
-                    sys.stdout.write('receive illegal content\r\n')
             client_socket.shutdown(2)
             client_socket.close()
 
-    def write_to_file(self, data):
+    def valid_file(self, data):
         ip_path = data['ip'].replace('.', '-')
         date_path = data['date'].split(' ')[0]
         date_ext = data['date'].split(' ')[1].replace(':', '_')
-
         dest_hash = data['hash']
-        content = data['content']
         filename = data['filename']
+
         file_path = os.path.join(DATA_DIR, ip_path, date_path)
         full_path_filename = os.path.join(file_path, filename)
 
@@ -115,18 +120,16 @@ class Server:
             )
 
         origin_md5 = self.get_file_md5(full_path_filename)
+        # print(origin_md5, '------', dest_hash)
         if origin_md5 == dest_hash:
             return False
 
         if os.path.exists(full_path_filename) and os.path.isfile(full_path_filename) and origin_md5 != dest_hash:
             os.rename(full_path_filename, full_path_filename + '.' + date_ext)
 
-        with open(full_path_filename, 'w+') as fp:
-            write_size = fp.write(content)
+        return full_path_filename
 
-        if write_size:
-            return True
-        return False
+
 
     @staticmethod
     def verify_directory(file_path):
@@ -142,7 +145,6 @@ class Server:
     @staticmethod
     def get_file_md5(filename):
         if not os.path.exists(filename) or not os.path.isfile(filename) or os.path.getsize(filename) == 0:
-            print(filename)
             return ''
         with open(filename, 'rb') as fp:
             data = fp.read()
