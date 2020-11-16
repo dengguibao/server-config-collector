@@ -1,0 +1,12 @@
+[Unit]
+Description=scc server daemon
+
+[Service]
+EnvironmentFile=/etc/scc/server.conf
+StandardOutput=syslog
+ExecStart=/usr/bin/scc-server.py --data-dir ${DATA_DIR} --host ${HOST} --port ${PORT} --max-connection MAX_CONNECTION
+KillSignal=SIGQUIT
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
