@@ -115,35 +115,41 @@ class Server:
             client_socket.close()
 
     def valid_file(self, data):
-        ip_path = data['ip'].replace('.', '-')
-        date_ext = data['date'].replace(':', '_').replace(' ', '_').replace('-', '_')
+        ip_path = data['ip']
+        filename_datetime = data['date'].replace(':', '_').replace(' ', '_').replace('-', '_')
         dest_hash = data['hash']
         filename = data['filename']
         x = filename.split('.')
-        filename_dir = x[0] if len(x) == 1 else '.'.join(x[0:-1])
+        filename_ext = x[0] if len(x) == 1 else x[-1]
+        filename_name = x[0] if len(x) == 1 else '.'.join(x[0:-1])
 
-        file_path = os.path.join(DATA_DIR, ip_path, filename_dir)
-        full_path_filename = os.path.join(file_path, filename)
+        backup_abs_path = os.path.join(DATA_DIR, ip_path, filename_name)
+        filename_full_path = os.path.join(backup_abs_path, filename)
 
-        file_path_state_code = self.verify_directory(file_path)
+        file_path_state_code = self.verify_directory(backup_abs_path)
         if '0x00' != file_path_state_code:
-            os.makedirs(file_path)
+            os.makedirs(backup_abs_path)
             sys.stdout.write(
                 '%s, [info], msg:create directory %s\r\n' % (
                     time.strftime('%F %T', time.localtime()),
-                    file_path
+                    backup_abs_path
                 )
             )
 
-        origin_md5 = self.get_file_md5(full_path_filename)
+        origin_md5 = self.get_file_md5(filename_full_path)
         # print(origin_md5, '------', dest_hash)
         if origin_md5 == dest_hash:
             return False
 
-        if os.path.exists(full_path_filename) and os.path.isfile(full_path_filename) and origin_md5 != dest_hash:
-            os.rename(full_path_filename, full_path_filename + '.' + date_ext)
+        if os.path.exists(filename_full_path) and os.path.isfile(filename_full_path) and origin_md5 != dest_hash:
+            os.rename(filename_full_path, '%s/%s_%s.%s' % (
+                backup_abs_path,
+                filename_name,
+                filename_datetime,
+                filename_ext
+            ))
 
-        return full_path_filename
+        return filename_full_path
 
     @staticmethod
     def verify_directory(file_path):
