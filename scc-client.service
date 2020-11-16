@@ -4,7 +4,7 @@ Description=scc client daemon
 [Service]
 EnvironmentFile=/etc/scc/client.conf
 StandardOutput=syslog
-ExecStart=/usr/bin/scc-client.py --server ${SERVER} --port ${PORT} --delay ${DELAY} --files ${FILES}
+ExecStart=/usr/bin/scc-client --server ${SERVER} --port ${PORT} --delay ${DELAY} --files ${FILES}
 KillSignal=SIGQUIT
 Restart=always
 
