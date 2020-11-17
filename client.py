@@ -8,6 +8,7 @@ import hashlib
 import json
 import sys
 import argparse
+import glob
 
 SERVER = '127.0.0.1'
 PORT = '2615'
@@ -44,15 +45,18 @@ class Client:
     def run(self):
         with open(FILE_PATH) as fp:
             all_lines = fp.read()
-        data = []
+        file_list = []
         for l in all_lines.splitlines():
             line = l.strip()
+
             if len(line) == 0 or line[0:1] == '#':
                 continue
             else:
-                data.append(line)
-        if len(data) > 0:
-            self.process(data)
+                for i in glob.glob(line):
+                    file_list.append(i)
+
+        if len(file_list) > 0:
+            self.process(file_list)
         else:
             sys.stdout.write('%s, [info], msg:backup file list is empty\r\n' % (
                 time.strftime('%F %T', time.localtime()),
