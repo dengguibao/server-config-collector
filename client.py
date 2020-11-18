@@ -9,6 +9,7 @@ import json
 import sys
 import argparse
 import glob
+import threading
 
 SERVER = '127.0.0.1'
 PORT = '2615'
@@ -31,8 +32,8 @@ class Client:
     }
 
     def __init__(self):
-        self.tcp_socket = socket(AF_INET, SOCK_STREAM)
-        self.tcp_socket.connect((SERVER, PORT))
+        # self.tcp_socket = socket(AF_INET, SOCK_STREAM)
+        # self.tcp_socket.connect((SERVER, PORT))
 
         file_path_state_code = self.verify_file(FILE_PATH)
         if '0x00' != file_path_state_code:
@@ -53,62 +54,70 @@ class Client:
                 continue
             else:
                 for i in glob.glob(line):
-                    file_list.append(i)
+                    threading.Thread(target=self.process, args=(i,)).start()
 
-        if len(file_list) > 0:
-            self.process(file_list)
-        else:
-            sys.stdout.write('%s, [info], msg:backup file list is empty\r\n' % (
+        # if len(file_list) == 0:
+        #     sys.stdout.write('%s, [info], msg:backup file list is empty\r\n' % (
+        #         time.strftime('%F %T', time.localtime()),
+        #     ))
+        # else:
+        #     for i in file_list:
+        #         threading.Thread(target=self.process, args=(i,)).start()
+        while True:
+            if threading.active_count() == 1:
+                break
+
+    def process(self, filename):
+        f = filename
+        state_code = self.verify_file(f)
+        if state_code != '0x00':
+            sys.stdout.write('%s, [error], filename:%s, msg:%s\r\n' % (
                 time.strftime('%F %T', time.localtime()),
+                f,
+                self.ERR[state_code]
             ))
+            return
 
-    def process(self, file_list):
-        for f in file_list:
-            state_code = self.verify_file(f)
-            if state_code != '0x00':
-                sys.stdout.write('%s, [error], filename:%s, msg:%s\r\n' % (
+        file_path_uuid = ''.join(
+            str(uuid.uuid5(uuid.NAMESPACE_DNS, f)).split('-')
+        )
+        file_hash = self.get_file_md5(f)
+
+        if file_path_uuid not in hash_array or hash_array[file_path_uuid] != file_hash:
+            hash_array[file_path_uuid] = file_hash
+            # send file metadata info
+            metadata_info = self.build_file_metadata_info(f)
+            # if socket is close, connect to server
+            # if getattr(self.tcp_socket, '_closed'):
+            #     self.tcp_socket = socket(AF_INET, SOCK_STREAM)
+            #     self.tcp_socket.connect((SERVER, PORT))
+            try:
+                tcp_socket = socket(AF_INET, SOCK_STREAM)
+                tcp_socket.connect((SERVER, PORT))
+            except:
+                sys.stdout.write('connect to server failed!\r\n')
+                return
+            tcp_socket.sendall(json.dumps(metadata_info, ensure_ascii=False).encode())
+            max_wait_time = 0
+
+            # if receive success then send data to server
+            while True:
+                server_response = tcp_socket.recv(1024)
+                if server_response or max_wait_time > 1:
+                    break
+                time.sleep(.1)
+                max_wait_time += .1
+
+            if server_response.decode() == 'ok':
+                file_data = self.get_file_content(f)
+                for i in file_data:
+                    tcp_socket.send(i)
+
+                sys.stdout.write('%s, [info], filename:%s, msg:push to server\r\n' % (
                     time.strftime('%F %T', time.localtime()),
-                    f,
-                    self.ERR[state_code]
+                    f
                 ))
-                continue
-
-            file_path_uuid = ''.join(
-                str(uuid.uuid5(uuid.NAMESPACE_DNS, f)).split('-')
-            )
-            file_hash = self.get_file_md5(f)
-
-            if file_path_uuid not in hash_array or hash_array[file_path_uuid] != file_hash:
-                hash_array[file_path_uuid] = file_hash
-                # send file metadata info
-                metadata_info = self.build_file_metadata_info(f)
-                # if socket is close, connect to server
-                if getattr(self.tcp_socket, '_closed'):
-                    self.tcp_socket = socket(AF_INET, SOCK_STREAM)
-                    self.tcp_socket.connect((SERVER, PORT))
-                self.tcp_socket.sendall(json.dumps(metadata_info, ensure_ascii=False).encode())
-                max_wait_time = 0
-
-                # if receive success then send data to server
-                while True:
-                    server_response = self.tcp_socket.recv(1024)
-                    if server_response or max_wait_time > 1:
-                        break
-                    time.sleep(.1)
-                    max_wait_time += .1
-
-                if server_response.decode() == 'ok':
-                    file_data = self.get_file_content(f)
-                    for i in file_data:
-                        self.tcp_socket.send(i)
-
-                    sys.stdout.write('%s, [info], filename:%s, msg:push to server\r\n' % (
-                        time.strftime('%F %T', time.localtime()),
-                        f
-                    ))
-                self.tcp_socket.close()
-            else:
-                continue
+            tcp_socket.close()
 
     @staticmethod
     def get_file_content(filename):

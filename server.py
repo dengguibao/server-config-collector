@@ -51,8 +51,8 @@ class Server:
             )
             try:
                 # metadata str
-                recv_metadata_str = client_socket.recv(1024)
-                file_metadata = json.loads(recv_metadata_str.decode())
+                recv_str = client_socket.recv(1024)
+                file_metadata = json.loads(recv_str.decode())
                 file_metadata['ip'] = client_addr[0]
                 full_path_filename = self.valid_file(file_metadata)
             except:
