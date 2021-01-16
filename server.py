@@ -7,6 +7,7 @@ from socket import socket, AF_INET, SOCK_STREAM
 import time
 import sys
 import argparse
+import random
 
 DATA_DIR = './'
 HOST = '0.0.0.0'
@@ -68,7 +69,9 @@ class Server:
                 if full_path_filename:
                     # send 'ok' to client, tell client start send file content data to this server
                     client_socket.send('ok'.encode())
-                    fp = open('/tmp/scc_tmp.dat', 'ab+')
+                    rand_str = ''.join(random.sample('abcdefghijklmnopqrstuvwxyz0123456789',5))
+                    temp_file = '/tmp/scc_%s.dat' % rand_str
+                    fp = open(temp_file, 'ab+')
                     # loop read client send data
                     while True:
                         try:
@@ -86,8 +89,8 @@ class Server:
                         fp.close()
                     # valid receive data md5 value
                     # if pass then remove to destination directory
-                    if self.get_file_md5('/tmp/scc_tmp.dat') == file_metadata['hash']:
-                        os.rename('/tmp/scc_tmp.dat', full_path_filename)
+                    if self.get_file_md5(temp_file) == file_metadata['hash']:
+                        os.rename(temp_file, full_path_filename)
                         noti_msg = '%s, [info], msg:%s %s config file backup success\r\n' % (
                             time.strftime('%F %T', time.localtime()),
                             client_addr[0],
@@ -100,7 +103,7 @@ class Server:
                             client_addr[0],
                             file_metadata['full_path_filename']
                         )
-                        os.remove('/tmp/scc_tmp.dat')
+                        os.remove(temp_file)
                     sys.stdout.write(noti_msg)
                 # local already exist this config file copy, tell client don't send data
                 else:
